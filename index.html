@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Modern Retrieval Systems — A Developer's Implementation Handbook</title>
+<title>Modern Retrieval Systems — A Concepts &amp; Use-Case Guide</title>
 <style>
   :root{
     --bg:#f7f8fa; --panel:#ffffff; --ink:#1c2130; --muted:#5b647a;
@@ -213,7 +213,7 @@
 <div class="layout">
   <aside class="sidebar" id="sidebar">
     <div class="brand">Modern Retrieval Systems
-      <small>A Developer's Implementation Handbook</small>
+      <small>A Concepts &amp; Use-Case Guide</small>
     </div>
     <h2>Chapters</h2>
     <ol>
@@ -227,18 +227,18 @@
     </ol>
     <h2>Per-chapter layout</h2>
     <ol style="counter-reset:none">
-      <li style="padding:3px 10px;color:var(--muted);font-size:.82rem">Definition → Key Features → <strong>Development</strong> → Production &amp; Integration → Libraries → Summary</li>
+      <li style="padding:3px 10px;color:var(--muted);font-size:.82rem">Definition → Key Features → <strong>How It Works</strong> → <strong>When to Use It</strong> → Libraries → Summary</li>
     </ol>
   </aside>
   <main class="content">
     <header class="book-header">
-      <div class="eyebrow">Implementation-first · Python 3.11+</div>
+      <div class="eyebrow">Understanding-first · Concepts &amp; Use Cases</div>
       <h1>Modern Retrieval Systems</h1>
       <div class="meta">
         <span>7 retrieval methods</span>
-        <span>Runnable code</span>
-        <span>FastAPI + RAG integration</span>
-        <span>Production architecture</span>
+        <span>Plain-language explanations</span>
+        <span>Illustrative code snippets</span>
+        <span>When-to-use guidance</span>
       </div>
     </header>
 <section class="chapter" id="ch-lexical">
@@ -274,125 +274,62 @@ the right tool when things must match exactly — product SKUs, error codes, fun
 <li><strong>Battle-tested at scale</strong> — decades of Lucene-derived production hardening (Elasticsearch, OpenSearch, Solr).</li>
 </ul>
 
-<h2>3. Development</h2>
-<pre class="lang-bash">
-pip install rank-bm25 nltk
-python3 -c "import nltk; nltk.download('stopwords')"
-</pre>
-<pre><code class="lang-python">
-# lexical_search.py — tokenize, index, and rank a small corpus with BM25
-import re
-from dataclasses import dataclass
-
-from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
-from rank_bm25 import BM25Okapi
-
-_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
-_STOPWORDS = set(stopwords.words("english"))
-_STEMMER = PorterStemmer()
-
-
-def tokenize(text: str) -&gt; list[str]:
-    """Lowercase, split, drop stopwords, stem. Must be applied identically
-    at index time and query time.
-    e.g. tokenize("Connections were RESET.") -&gt; ['connect', 'reset']"""
-    tokens = _TOKEN_RE.findall(text.lower())
-    return [_STEMMER.stem(t) for t in tokens if t not in _STOPWORDS]
-
-
-DOCUMENTS = [
-    {"id": "doc-1", "title": "Connection Reset Errors",
-     "text": "The server returned ERR_CONN_RESET_499 when the client closed "
-             "the connection before the response was fully sent."},
-    {"id": "doc-2", "title": "Configuring Retry Policies",
-     "text": "Retries should use exponential backoff with jitter. Configure "
-             "max_retries and base_delay_ms in the client config."},
-    {"id": "doc-3", "title": "Database Connection Pooling",
-     "text": "Connection pooling reduces the overhead of establishing new "
-             "database connections. Tune pool_size and max_overflow."},
-    {"id": "doc-4", "title": "SKU Lookup API",
-     "text": "The /v1/products/{sku} endpoint returns product metadata for "
-             "a given SKU, such as SKU-88421-BLK."},
-]
-
-
-@dataclass
-class SearchResult:
-    doc_id: str
-    title: str
-    score: float
-
-
-class LexicalSearchEngine:
-    def __init__(self, documents: list[dict[str, str]], k1: float = 1.5, b: float = 0.75) -&gt; None:
-        self._documents = documents
-        corpus_tokens = [tokenize(doc["text"]) for doc in documents]
-        # BM25Okapi precomputes IDF and average doc length (avgdl) here.
-        self._bm25 = BM25Okapi(corpus_tokens, k1=k1, b=b)
-
-    def search(self, query: str, top_k: int = 5) -&gt; list[SearchResult]:
-        scores = self._bm25.get_scores(tokenize(query))
-        ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
-        return [
-            SearchResult(self._documents[i]["id"], self._documents[i]["title"], round(float(scores[i]), 4))
-            for i in ranked
-            if scores[i] &gt; 0
-        ]
-
-
-if __name__ == "__main__":
-    engine = LexicalSearchEngine(DOCUMENTS)
-    for r in engine.search("connection reset error", top_k=3):
-        print(f"{r.score:6.3f}  {r.doc_id}  {r.title}")
-    # -&gt; 2.847  doc-1  Connection Reset Errors
-    # -&gt; 0.412  doc-3  Database Connection Pooling
-</code></pre>
-<ul>
-<li><strong>Lower <code>k1</code></strong> (e.g. 1.0) — term frequency saturates fast; good for short, keyword-dense docs (logs, SKUs).</li>
-<li><strong>Higher <code>k1</code></strong> (e.g. 2.0) — repeated terms keep contributing; better for long-form documents.</li>
-<li><strong>Lower <code>b</code></strong> (e.g. 0.3) — less length penalty, for corpora with legitimate length variance.</li>
-<li><strong>Higher <code>b</code> / <code>b=1</code></strong> — full length normalization, stops long docs winning purely on word count.</li>
-<li><strong>Field boosting</strong> — index title/body separately, combine per-field BM25 scores (BM25F), weighting title matches higher.</li>
-</ul>
-<div class="callout callout-warn">
-<span class="tag">Warning</span>
-<p>Aggressive stemming can hurt precision on exact-identifier queries. Keep a second, unstemmed field for SKUs/error codes/function names so exact matches aren't lost to stemming artifacts.</p>
-</div>
-<p>For a persistent inverted index at scale, use Whoosh (embedded) or OpenSearch/Elasticsearch (BM25 by default).</p>
-
-<h2>4. Production &amp; Integration</h2>
-<pre class="diagram">
-Client → GET /search?q=...&amp;top_k=5 → FastAPI → BM25 engine → JSON (ranked docs + scores)
-</pre>
-<pre><code class="lang-python">
-# main.py — FastAPI service wrapping the lexical search engine
-from fastapi import FastAPI, Query
-from lexical_search import DOCUMENTS, LexicalSearchEngine
-
-app = FastAPI(title="Lexical Search Service")
-engine = LexicalSearchEngine(DOCUMENTS)  # built once at startup
-
-@app.get("/search")
-def search(q: str = Query(..., min_length=1), top_k: int = Query(5, ge=1, le=50)):
-    hits = engine.search(q, top_k=top_k)
-    return {"query": q, "results": [h.__dict__ for h in hits]}
-</code></pre>
+<h2>3. How It Works</h2>
 <p>
-In RAG, BM25 serves as the retrieval step: it fetches the top-<code>k</code> lexically relevant chunks that
-get concatenated into the LLM's context — a strong default when queries use exact terminology (API names,
-config keys, legal citations).
+Lexical search has two simple phases. <strong>At index time</strong>, it reads every document and builds an
+<strong>inverted index</strong> — a lookup table from each word to the list of documents that contain it.
+<strong>At query time</strong>, it splits your query into words, looks each one up in that table, and collects the
+documents that match. Here is the whole idea in a few lines:
 </p>
-<ul>
-<li><strong>Storage/index</strong> — precompute at write time; inverted index lives on disk (Lucene segments) or in memory for small corpora.</li>
-<li><strong>Analyzers/tokenization</strong> — must be identical at index and query time (lowercasing, stopwords, stemming).</li>
-<li><strong>Sharding/scale</strong> — partition the index across nodes; replicate shards for fault tolerance and read throughput; a query fans out to all shards and results are merged.</li>
-<li><strong>Caching</strong> — filter/query caches at the shard level; request cache for identical repeated queries (e.g. dashboards).</li>
-<li><strong>Latency</strong> — track p50/p95/p99 query latency, indexing rate, and refresh interval (how soon writes become searchable, default ~1s).</li>
-</ul>
+<pre><code class="lang-python"># The essence: an inverted index maps each word -> the docs that contain it.
+docs = {
+    "d1": "connection reset error",
+    "d2": "database connection pool",
+    "d3": "user login timeout",
+}
+
+index = {}                                  # word -> set of doc ids
+for doc_id, text in docs.items():
+    for word in text.split():
+        index.setdefault(word, set()).add(doc_id)
+
+# A query just looks up its words and gathers the docs that mention them.
+query = "connection error"
+hits = set()
+for word in query.split():
+    hits |= index.get(word, set())
+
+print(hits)                                 # {'d1', 'd2'}  <- both mention "connection"</code></pre>
+<p>
+Matching tells you <em>which</em> documents contain the words; <strong>BM25</strong> decides the <em>order</em>. You
+don't need the formula to get the intuition — it rewards three things: documents that use your search words more
+often, words that are rare and specific (matching "ERR_CONN_RESET" says more than matching "the"), and it stops
+very long documents from ranking high just because they contain more words overall.
+</p>
 <div class="callout callout-info">
-<span class="tag">Note</span>
-<p>Precompute (index at write time) whenever the corpus changes slowly relative to query volume — the common case. Reserve query-time scoring (scripted fields) for attributes that change too fast to justify re-indexing; it bypasses the fast inverted-index path.</p>
+<span class="tag">In one sentence</span>
+<p>Build a word&nbsp;&rarr;&nbsp;documents lookup table once, then answer every query by looking up its words and
+ranking the matches with BM25 — no model, no training, no GPU.</p>
+</div>
+
+<h2>4. When to Use It</h2>
+<p>Lexical search is the right default whenever the <em>exact words</em> matter more than their meaning.</p>
+<h3>Good fit — reach for it when…</h3>
+<ul>
+<li><strong>Exact identifiers must match.</strong> Product SKUs, error codes, order numbers, function/API names, legal citations — anything where "close enough" is wrong.</li>
+<li><strong>Users type the words they expect to find.</strong> Code search, log search, documentation search, e-commerce keyword filters.</li>
+<li><strong>You need it fast, cheap, and explainable.</strong> Single-digit-millisecond queries on ordinary CPUs, and every score can be explained.</li>
+<li><strong>You want a strong, simple baseline.</strong> It's the retriever to beat, and often the first stage that a smarter method reranks.</li>
+</ul>
+<h3>Poor fit — look elsewhere when…</h3>
+<ul>
+<li><strong>Users phrase things differently than your documents.</strong> A search for "car" won't find a page that only says "automobile" &rarr; use <a href="#ch-dense">dense vector search</a>.</li>
+<li><strong>Meaning and paraphrase matter.</strong> FAQ-style or conversational questions &rarr; dense or <a href="#ch-sparse">learned sparse</a> retrieval.</li>
+<li><strong>You need cross-language search.</strong> Query in one language, documents in another &rarr; multilingual embeddings.</li>
+</ul>
+<div class="callout callout-tip">
+<span class="tag">Rule of thumb</span>
+<p>If a user would type the <em>exact</em> word they expect to see in the result, lexical search wins. When they'd describe it in their own words instead, reach for dense search — and in practice, running both together ("hybrid") is a very strong default.</p>
 </div>
 
 <h2>5. Popular Open Source Libraries</h2>
@@ -453,103 +390,63 @@ speed gain.
 <li><strong>Millisecond retrieval at scale</strong> — ANN indexes return top-k from billions of vectors in single-digit milliseconds.</li>
 </ul>
 
-<h2>3. Development</h2>
-<pre class="lang-bash">
-pip install sentence-transformers faiss-cpu numpy
-</pre>
+<h2>3. How It Works</h2>
 <p>
-Encode a small corpus with <code>BAAI/bge-small-en-v1.5</code> (384-dim, fast on CPU), L2-normalize so
-inner product equals cosine similarity, build an exact <code>IndexFlatIP</code> baseline, and query it:
+Dense search also has two phases. <strong>At index time</strong>, an embedding model reads each document and turns
+it into a vector — a list of numbers that captures its meaning — and those vectors are stored. <strong>At query
+time</strong>, the same model turns your query into a vector, and the system returns the stored vectors that point in
+the most similar direction, measured with <strong>cosine similarity</strong>. The key insight is that similar
+<em>meaning</em> produces similar <em>vectors</em>, even when the words are completely different:
 </p>
-<pre><code class="lang-python">"""dense_search.py — encode, index, and query a small corpus."""
+<pre><code class="lang-python">import numpy as np
 
-from sentence_transformers import SentenceTransformer
-import faiss
+# Pretend an embedding model already turned each word into a vector.
+# Similar meaning -> vectors that point in a similar direction.
+vectors = {
+    "car":        np.array([0.90, 0.10, 0.20]),
+    "automobile": np.array([0.88, 0.12, 0.18]),   # <- almost identical to "car"
+    "banana":     np.array([0.10, 0.90, 0.30]),
+}
 
-MODEL_NAME = "BAAI/bge-small-en-v1.5"
+def cosine(a, b):
+    return a @ b / (np.linalg.norm(a) * np.linalg.norm(b))
 
-CORPUS = [
-    "FAISS is a library for efficient similarity search of dense vectors.",
-    "HNSW builds a multi-layer graph for approximate nearest neighbor search.",
-    "Qdrant is an open source vector database written in Rust.",
-    "Cosine similarity measures the angle between two vectors, ignoring magnitude.",
-    "Retrieval-Augmented Generation grounds LLM answers in retrieved documents.",
-    "Product quantization compresses vectors to reduce memory footprint.",
-]
-
-model = SentenceTransformer(MODEL_NAME)
-
-# normalize_embeddings=True does L2 normalization inline — required so
-# IndexFlatIP (inner product) ranks by pure cosine similarity.
-vectors = model.encode(
-    CORPUS, normalize_embeddings=True, convert_to_numpy=True
-).astype("float32")
-
-index = faiss.IndexFlatIP(vectors.shape[1])   # exact, brute-force cosine search
-index.add(vectors)
-
-
-def search(query: str, k: int = 3) -&gt; list[tuple[str, float]]:
-    query_vector = model.encode(
-        [query], normalize_embeddings=True, convert_to_numpy=True
-    ).astype("float32")
-    scores, ids = index.search(query_vector, k)
-    return [(CORPUS[i], float(s)) for s, i in zip(scores[0], ids[0]) if i != -1]
-
-
-for doc, score in search("database for storing embeddings"):
-    print(f"[{score:.4f}] {doc}")
-</code></pre>
+query = vectors["car"]
+for word, v in vectors.items():
+    print(word, round(cosine(query, v), 3))
+# car 1.0 | automobile 0.999 | banana 0.421   <- meaning, not spelling</code></pre>
+<p>
+Real embedding models use hundreds or thousands of dimensions instead of three, but the principle is identical.
+Comparing your query against every stored vector one by one is accurate but slow once you have millions of them, so
+production systems use an <strong>ANN index</strong> (HNSW, IVF) that finds the closest vectors almost instantly,
+trading a tiny bit of accuracy for a huge speed gain.
+</p>
 <div class="callout callout-info">
-<span class="tag">Note</span>
-<p>
-For millions of vectors use <code>IndexHNSWFlat</code> / <code>IndexIVFFlat</code>, or a vector DB.
-ChromaDB (simplest local) and Qdrant (production, metadata filtering) offer the same flow with
-persistence.
-</p>
+<span class="tag">In one sentence</span>
+<p>Turn text into vectors whose direction encodes meaning, then answer a query by finding the nearest vectors — this
+is what lets "car" match "automobile," and it's the engine behind semantic search and RAG.</p>
 </div>
 
-<h2>4. Production &amp; Integration</h2>
-<p>
-Retrieval is typically exposed as an HTTP service and used as the retrieval stage of a RAG pipeline:
-</p>
-<pre><code class="lang-python">"""app.py — expose dense retrieval over HTTP."""
-
-from fastapi import FastAPI
-from pydantic import BaseModel
-
-app = FastAPI()
-model = SentenceTransformer(MODEL_NAME)
-index = faiss.read_index("index.faiss")   # built offline by an ingestion job
-
-
-class SearchRequest(BaseModel):
-    query: str
-    k: int = 5
-
-
-@app.post("/search")
-def search_endpoint(req: SearchRequest):
-    qv = model.encode([req.query], normalize_embeddings=True).astype("float32")
-    scores, ids = index.search(qv, req.k)
-    return [{"id": int(i), "score": float(s)} for s, i in zip(scores[0], ids[0]) if i != -1]
-</code></pre>
-<p>
-RAG pipeline: retrieve top-k chunks -&gt; assemble a grounded prompt -&gt; call the LLM -&gt; return a
-cited answer.
-</p>
-<pre class="diagram">
-Ingest: Documents -&gt; Chunk -&gt; Embed (batched, GPU) -&gt; Vector DB (HNSW/IVF)
-Query:  Client -&gt; Embed Query (cached) -&gt; ANN Search + Filter -&gt; Top-K -&gt; LLM -&gt; Answer
-</pre>
+<h2>4. When to Use It</h2>
+<p>Dense search shines whenever <em>meaning</em> matters more than the exact words a user typed.</p>
+<h3>Good fit — reach for it when…</h3>
 <ul>
-<li><strong>Embedding service</strong> — batch texts per forward pass on GPU workers, decoupled from query traffic.</li>
-<li><strong>Chunking</strong> — 200–500 tokens with 10–20% overlap is a common starting point.</li>
-<li><strong>Vector DB choice</strong> — Qdrant, Milvus, or pgvector for replication, sharding, and payload filtering beyond a bare FAISS process.</li>
-<li><strong>HNSW/IVF params</strong> — <code>M</code>/<code>ef_construction</code> (or <code>nlist</code>) at build time; <code>ef_search</code>/<code>nprobe</code> tunable per-request for the recall/latency tradeoff.</li>
-<li><strong>Incremental upserts</strong> — update by id rather than full rebuilds; schedule periodic reindexing since ANN graphs degrade under heavy churn.</li>
-<li><strong>Caching</strong> — cache query embeddings and repeated search results to cut embedding and ANN load.</li>
+<li><strong>Users ask in their own words.</strong> Help centers, FAQ search, support bots — the query rarely uses the exact wording of the answer.</li>
+<li><strong>Synonyms and paraphrase are common.</strong> "How do I cancel my plan?" should find a doc titled "Ending a subscription."</li>
+<li><strong>You're building RAG.</strong> Dense retrieval is the standard way to fetch the passages that ground an LLM's answer.</li>
+<li><strong>You need "find similar" or multilingual search.</strong> Related articles, similar products, or matching a query in one language to documents in another.</li>
 </ul>
+<h3>Poor fit — look elsewhere when…</h3>
+<ul>
+<li><strong>Exact identifiers must match.</strong> SKUs, error codes, and function names are better (and cheaper) served by <a href="#ch-lexical">lexical search</a>.</li>
+<li><strong>The corpus is tiny or changes constantly.</strong> Re-embedding on every edit may not be worth it &rarr; consider <a href="#ch-vectorless">vectorless retrieval</a>.</li>
+<li><strong>You need fully explainable scores or have no infra for a model.</strong> A cosine number is harder to justify than a BM25 term match.</li>
+</ul>
+<div class="callout callout-tip">
+<span class="tag">Rule of thumb</span>
+<p>If users describe what they want in their own words, go dense. It pairs extremely well with lexical search — a
+"hybrid" of the two covers both meaning and exact matches, and is the safest default for most search products.</p>
+</div>
 
 <h2>5. Popular Open Source Libraries</h2>
 <div class="table-wrap">
@@ -617,144 +514,57 @@ weighted words.
 <li><strong>Drop-in for existing search infra</strong> — bolts onto Lucene/Elasticsearch/OpenSearch via <code>rank_features</code> or native neural-sparse fields.</li>
 </ul>
 
-<h2>3. Development</h2>
-<pre class="lang-bash">pip install transformers torch</pre>
+<h2>3. How It Works</h2>
 <p>
-Load <code>AutoModelForMaskedLM</code> (not plain <code>AutoModel</code>) because SPLADE needs the
-MLM head that projects token states into vocabulary-sized logits. Encoding pools those logits into
-a sparse vector via <code>max_t log(1 + relu(logits[t]))</code> over the sequence dimension, then
-an inverted index and dot-product scorer make it searchable.
+Learned sparse retrieval looks like keyword search, but a neural network does two extra jobs. First, it decides
+<strong>how important</strong> each word is (instead of a fixed formula). Second, it can <strong>add related
+words</strong> that never appeared in the text — this is <strong>term expansion</strong>, and it's what closes
+keyword search's biggest weakness. The output is just a list of <code>{word: weight}</code> pairs, so scoring is the
+same dot product a keyword engine already does:
 </p>
-<pre><code class="lang-python"># splade.py
-from collections import defaultdict
+<pre><code class="lang-python"># A learned-sparse model turns text into {word: importance}, and can switch on
+# related words that never appeared in the text ("expansion").
+doc = {                       # a document about a heart attack...
+    "heart": 1.8, "attack": 1.6,
+    "cardiac": 1.1, "myocardial": 0.9,   # <- EXPANDED: never written, still added
+}
+query = {"heart": 1.7, "attack": 1.5}
 
-import torch
-from transformers import AutoModelForMaskedLM, AutoTokenizer
-
-MODEL_NAME = "naver/splade-v3"
-
-
-class SpladeEncoder:
-    def __init__(self, model_name: str = MODEL_NAME) -&gt; None:
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForMaskedLM.from_pretrained(model_name).to(self.device).eval()
-
-    def encode(self, text: str) -&gt; dict[int, float]:
-        """logits -&gt; log(1 + relu(x)) -&gt; max-pool over tokens -&gt; sparse {term_id: weight}."""
-        tokens = self.tokenizer(text, truncation=True, max_length=256, return_tensors="pt").to(self.device)
-        with torch.no_grad():
-            logits = self.model(**tokens).logits[0]          # [seq_len, vocab_size]
-        activated = torch.log1p(torch.relu(logits))          # log(1 + relu(x))
-        sparse_vec = torch.max(activated, dim=0).values       # max-pool -&gt; [vocab_size]
-        nonzero = torch.nonzero(sparse_vec).squeeze(-1)
-        return {int(i): float(sparse_vec[i]) for i in nonzero.tolist()}
-
-    def decode_terms(self, vec: dict[int, float], top_k: int = 10) -&gt; list[tuple[str, float]]:
-        ranked = sorted(vec.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
-        return [(self.tokenizer.decode([tid]).strip(), round(w, 3)) for tid, w in ranked]
-
-
-class SparseInvertedIndex:
-    def __init__(self) -&gt; None:
-        self.postings: dict[int, list[tuple[str, float]]] = defaultdict(list)
-        self.doc_vectors: dict[str, dict[int, float]] = {}
-
-    def build(self, encoder: SpladeEncoder, corpus: dict[str, str]) -&gt; None:
-        for doc_id, text in corpus.items():
-            vec = encoder.encode(text)
-            self.doc_vectors[doc_id] = vec
-            for term_id, weight in vec.items():
-                self.postings[term_id].append((doc_id, weight))
-
-
-def search(query: str, encoder: SpladeEncoder, index: SparseInvertedIndex, top_k: int = 5):
-    query_vec = encoder.encode(query)
-    scores: dict[str, float] = defaultdict(float)
-    for term_id, q_w in query_vec.items():                    # dot product, postings-scoped
-        for doc_id, d_w in index.postings.get(term_id, []):
-            scores[doc_id] += q_w * d_w
-    return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
-
-
-if __name__ == "__main__":
-    encoder = SpladeEncoder()
-    corpus = {
-        "doc1": "Patient presented with symptoms of a heart attack.",
-        "doc2": "Myocardial infarction requires immediate cardiac intervention.",
-        "doc3": "The new laptop features a faster processor and longer battery life.",
-    }
-    index = SparseInvertedIndex()
-    index.build(encoder, corpus)
-
-    for doc_id, score in search("heart attack symptoms", encoder, index, top_k=3):
-        print(f"{doc_id}  score={score:.3f}")
-    # doc1 ranks highest on literal overlap; doc2 ranks above doc3 purely via
-    # expansion ("cardiac" activates from "heart attack" context), which a
-    # raw BM25 index matching only literal tokens would miss entirely.
-</code></pre>
-<div class="callout callout-tip">
-<span class="tag">Tip</span>
+# Score = add up the weights for words the query and doc share (a dot product).
+score = sum(w * doc.get(term, 0) for term, w in query.items())
+print(round(score, 2))        # 5.46  -> strong match, and it would also match a
+                              # doc that only said "cardiac" thanks to expansion</code></pre>
 <p>
-Printing <code>decode_terms()</code> on sample documents is the fastest sanity check: if top terms
-look like noise (stopword or subword fragments), the checkpoint/tokenizer pairing or truncation is
-likely wrong. Distilled backbones (e.g. <code>naver/splade-cocondenser-ensembledistil</code>) cut
-query-side latency roughly in half; a FLOPS regularization term at training time controls the
-recall/sparsity tradeoff of a given checkpoint.
+Because the result is still a bag of weighted words, it drops straight into the same inverted-index engines
+(Elasticsearch, OpenSearch, Lucene, Qdrant) that power BM25 — no separate vector database required. And unlike a dense
+vector, you can read the weights directly to see exactly which words fired and why.
 </p>
+<div class="callout callout-info">
+<span class="tag">In one sentence</span>
+<p>It's keyword search with a brain: a neural net picks the important words <em>and</em> adds related ones, but the
+output stays a plain, human-readable list of weighted terms your existing search engine already understands.</p>
 </div>
-<p>
-For production, store precomputed sparse vectors in Qdrant (native <code>SparseVector</code>),
-Elasticsearch <code>rank_features</code>, or OpenSearch neural sparse — all score with an exact
-dot product over matching postings, identical relevance to the in-memory index above.
-</p>
 
-<h2>4. Production &amp; Integration</h2>
-<p>
-Sparse retrieval splits cleanly into an expensive offline stage and a cheap online stage: document
-vectors are precomputed once, in batches, on GPU; query vectors are encoded per-request on a
-low-latency path. Wrap the query encoder in a FastAPI service and fuse with BM25 and/or a dense
-retriever — SPLADE's expansion, BM25's exact-match precision, and dense paraphrase-level semantics
-rarely fail on the same queries.
-</p>
-<pre class="diagram">
- OFFLINE (batch, GPU)                    ONLINE (per request)
- Corpus -&gt; SPLADE doc encoder            Query -&gt; SPLADE query encoder (distilled)
-   -&gt; sparse vectors -&gt; bulk load into      -&gt; postings lookup + dot-product score
-      Qdrant / rank_features / neural-sparse -&gt; RRF fuse w/ BM25 -&gt; cached response
-</pre>
-<pre><code class="lang-python"># service.py
-from fastapi import FastAPI
-from pydantic import BaseModel
-
-from splade import SpladeEncoder, SparseInvertedIndex, search as sparse_search
-
-app = FastAPI()
-encoder = SpladeEncoder()
-index = SparseInvertedIndex()  # index.build(encoder, load_corpus()) at startup
-
-
-class SearchRequest(BaseModel):
-    query: str
-    top_k: int = 10
-
-
-@app.post("/search")
-def search_endpoint(req: SearchRequest):
-    results = sparse_search(req.query, encoder, index, top_k=req.top_k)
-    return [{"doc_id": d, "score": s} for d, s in results]
-</code></pre>
-<p>
-For hybrid search, fuse SPLADE's ranking with BM25 or a dense retriever via Reciprocal Rank Fusion
-(RRF) — it needs no score calibration across incomparable scales, only rank position.
-</p>
+<h2>4. When to Use It</h2>
+<p>This is the method for teams that already run a keyword-search engine and want more relevance without replacing it.</p>
+<h3>Good fit — reach for it when…</h3>
 <ul>
-<li>Precompute document vectors offline on GPU; re-encode only on create/update, never per query.</li>
-<li>Store postings in an existing inverted index (Qdrant sparse, Elasticsearch, OpenSearch) rather than adding a new system.</li>
-<li>Encode queries synchronously at runtime with a distilled/smaller checkpoint and a capped sequence length to keep p99 low.</li>
-<li>Cache encoded query vectors and/or result sets keyed on normalized query text — encoding is the dominant per-request cost.</li>
-<li>Expansion multiplies term count per document versus raw tokenization; plan storage and reindex windows accordingly.</li>
+<li><strong>You already run Elasticsearch / OpenSearch / Lucene.</strong> You get semantic-style recall by adding a field, not by standing up a whole new vector database.</li>
+<li><strong>You need interpretable, debuggable relevance.</strong> You can print the exact terms that fired — valuable in regulated or high-stakes domains.</li>
+<li><strong>Vocabulary mismatch hurts you.</strong> Medical, legal, or technical corpora where users and documents use different words for the same thing.</li>
+<li><strong>You want a strong first stage.</strong> Often fused with BM25 and/or dense retrieval for the best of all three.</li>
 </ul>
+<h3>Poor fit — look elsewhere when…</h3>
+<ul>
+<li><strong>You have no existing search infrastructure.</strong> For a small project, a plain <a href="#ch-dense">dense</a> or <a href="#ch-vectorless">vectorless</a> setup is less to build.</li>
+<li><strong>Latency budgets are extreme.</strong> Encoding the query adds a neural-network forward pass that raw BM25 doesn't.</li>
+<li><strong>You need full paraphrase-level meaning.</strong> When matches depend on deep semantics beyond word overlap &rarr; <a href="#ch-dense">dense</a> or <a href="#ch-multivector">multi-vector</a>.</li>
+</ul>
+<div class="callout callout-tip">
+<span class="tag">Rule of thumb</span>
+<p>Choose learned sparse when you have mature keyword-search infrastructure and want to make it smarter without ripping
+it out — you keep the speed, tooling, and interpretability of lexical search and gain semantic recall.</p>
+</div>
 
 <h2>5. Popular Open Source Libraries</h2>
 <div class="table-wrap">
@@ -812,97 +622,56 @@ many-topic documents and the go-to second-pass reranker in high-precision RAG pi
 <li><strong>Higher storage cost</strong> — one vector per token instead of one per document multiplies index size roughly by token count.</li>
 </ul>
 
-<h2>3. Development</h2>
+<h2>3. How It Works</h2>
+<p>
+Ordinary dense search squeezes a whole document into a <em>single</em> vector, which averages all its details together.
+Multi-vector search keeps <strong>one vector per word</strong> instead, so nothing is blurred away. To compare a query
+and a document it uses <strong>MaxSim</strong>: for each query word, find its best-matching word anywhere in the
+document, then add up those best matches. That's the entire scoring rule:
+</p>
+<pre><code class="lang-python">import numpy as np
 
-<p>MaxSim's entire mathematical core in PyTorch — two L2-normalized token matrices, a matmul, a row-wise max, and a sum:</p>
+# One vector PER WORD (not one per document). Tiny 2-D vectors for illustration.
+query = np.array([[1.0, 0.0],           # query word 1
+                  [0.0, 1.0]])          # query word 2
+doc   = np.array([[0.9, 0.1],           # doc word 1  (matches query word 1)
+                  [0.1, 1.0],           # doc word 2  (matches query word 2)
+                  [0.5, 0.5]])          # doc word 3
 
-<pre><code class="lang-python">
-import torch
-
-def maxsim_score(query_emb: torch.Tensor, doc_emb: torch.Tensor) -&gt; torch.Tensor:
-    # query_emb: [n_q, dim], doc_emb: [n_d, dim] — both L2-normalized
-    sim = query_emb @ doc_emb.T                     # cosine sim, [n_q, n_d]
-    max_sim_per_query_token = sim.max(dim=1).values  # best doc token per query token
-    return max_sim_per_query_token.sum()
-</code></pre>
-
-<p>For real use, ColBERT via RAGatouille wraps the ColBERTv2 checkpoint and its PLAID index behind a
-high-level API:</p>
-
-<pre class="lang-bash">
-pip install ragatouille
-</pre>
-
-<pre><code class="lang-python">
-from ragatouille import RAGPretrainedModel
-
-RAG = RAGPretrainedModel.from_pretrained("colbert-ir/colbertv2.0")
-
-RAG.index(
-    collection=DOCUMENTS,
-    index_name="handbook-demo",
-    max_document_length=180,
-    split_documents=True,
-)
-
-results = RAG.search(query="How does late interaction work?", k=3,
-                      index_name="handbook-demo")
-for r in results:
-    print(f"{r['score']:.2f}  {r['content'][:80]}")
-</code></pre>
-
-<p>In production ColBERT is normally used as a reranker over a first-stage retriever's candidates via
-<code>RAG.rerank(query=..., documents=candidate_docs, k=3)</code> rather than searching the full corpus directly.</p>
-
-<p>BGE-M3 (FlagEmbedding) returns dense + sparse + multi-vector in one pass; call
-<code>model.colbert_score()</code> on the returned <code>colbert_vecs</code> to get a late-interaction score
-without deploying a separate ColBERT model.</p>
-
+sims = query @ doc.T                    # similarity of every query word to every doc word
+best_per_query_word = sims.max(axis=1)  # each query word keeps only its best match
+print(best_per_query_word.sum())        # 1.9  <- the MaxSim score</code></pre>
+<p>
+Keeping every word's vector is what makes it so precise on long, many-topic documents — but it also means far more
+vectors to store. So in practice it is used as a <strong>reranker</strong>: a cheap first-stage retriever (keyword or
+dense) fetches ~100 candidates, and MaxSim carefully re-scores just those to pick the true top few.
+</p>
 <div class="callout callout-info">
-<span class="tag">Note</span>
-<p><strong>PLAID + centroids.</strong> Storing every token vector uncompressed does not scale. PLAID
-clusters token embeddings across the corpus into centroids (k-means) and stores each token as a centroid id
-plus a quantized residual, pruning candidates by cheap centroid similarity before running exact MaxSim on
-the survivors.</p>
+<span class="tag">In one sentence</span>
+<p>Compare documents word-by-word instead of as a single averaged blob — far more precise, but heavy enough that it's
+usually a second-pass reranker rather than your only retriever.</p>
 </div>
 
-<h2>4. Production &amp; Integration</h2>
-
-<p>The canonical pattern: a cheap first-stage retriever (BM25 or single-vector dense) produces ~100
-candidates, ColBERT MaxSim reranks them, and the top 5 go to the LLM — typically wrapped as a FastAPI
-endpoint:</p>
-
-<pre><code class="lang-python">
-@app.post("/search", response_model=list[SearchHit])
-def search(req: SearchRequest) -&gt; list[SearchHit]:
-    candidates = bm25_search(req.query, k=req.candidate_pool)             # Stage 1
-    reranked = rerank_candidates(req.query, candidates, top_k=req.top_k)  # Stage 2
-    return [SearchHit(content=c["content"], score=c["score"]) for c in reranked]
-</code></pre>
-
-<pre class="diagram">
-Query ──► Stage 1: BM25 / dense ANN     (candidates ≈ 100)
-              │
-              ▼
-        Stage 2: ColBERT MaxSim rerank  (GPU, top_k = 5)
-              │
-              ▼
-        Response: top_k docs + scores
-</pre>
-
-<div class="callout callout-info">
-<span class="tag">RAG note</span>
-<p>Using ColBERT/BGE-M3 as the reranking stage before context reaches the LLM materially improves context
-selection: token-level matching surfaces the chunk that actually contains the answer, rather than the chunk
-whose <em>average</em> embedding happens to be closest to the query.</p>
-</div>
-
+<h2>4. When to Use It</h2>
+<p>Multi-vector search is a precision tool — reach for it when "almost right" isn't good enough.</p>
+<h3>Good fit — reach for it when…</h3>
 <ul>
-<li><strong>Storage cost.</strong> A 500-token document at 128 dims is ~256&nbsp;KB uncompressed (500 × 128 × 4 bytes) vs. ~3&nbsp;KB for a single pooled vector — roughly a 50-200x increase in stored vectors overall. PLAID-style centroid + residual compression typically claws back 10-30x, but multivector indexes still need far more RAM/SSD than single-vector ones at the same corpus size.</li>
-<li><strong>PLAID index.</strong> Centroid pruning + ANN narrows candidates before exact MaxSim runs, keeping the compressed index queryable at scale.</li>
-<li><strong>Two-stage retrieval.</strong> Only the reranking stage needs full-precision multi-vector data — the first-stage index stays single-vector and cheap, bounding latency as the corpus grows.</li>
-<li><strong>GPU/latency.</strong> Encoding and Stage-2 MaxSim want GPU batching; Stage-1 candidate search runs fine on CPU. Precompute and cache document token embeddings at index time — only the query is encoded on the request path.</li>
+<li><strong>Precision is critical.</strong> The answer must come from the <em>exactly</em> right passage, not merely a topically-close one.</li>
+<li><strong>Documents are long and cover many topics.</strong> One averaged vector smears them together; per-word vectors keep each point distinct.</li>
+<li><strong>You're reranking in a RAG pipeline.</strong> Use it as the second stage to pick the chunk that truly contains the answer before it reaches the LLM.</li>
+<li><strong>You have GPU budget and room for a bigger index.</strong> The quality gain is real when you can pay for it.</li>
 </ul>
+<h3>Poor fit — look elsewhere when…</h3>
+<ul>
+<li><strong>Storage, latency, or cost are tight.</strong> One vector per word is roughly 10–100× larger than a single-vector <a href="#ch-dense">dense</a> index.</li>
+<li><strong>A simpler retriever already meets your quality bar.</strong> If dense or lexical is "good enough," the extra complexity isn't worth it.</li>
+<li><strong>The corpus is small.</strong> With few, short documents the precision gain is rarely noticeable.</li>
+</ul>
+<div class="callout callout-tip">
+<span class="tag">Rule of thumb</span>
+<p>Treat it as a precision booster, not your only retriever: let a cheap first stage narrow the field, then use
+multi-vector MaxSim to rerank a small candidate set for the final, high-quality answer.</p>
+</div>
 
 <h2>5. Popular Open Source Libraries</h2>
 
@@ -951,109 +720,62 @@ final answer.</p>
 <li><strong>Strength on connected data</strong> — fraud rings, recommendation networks, supply chains, and knowledge graphs are naturally graph-shaped.</li>
 </ul>
 
-<h2>3. Development</h2>
+<h2>3. How It Works</h2>
+<p>
+Graph retrieval stores your data as <strong>nodes</strong> (things) connected by <strong>relationships</strong>
+(how they relate). To answer a question you don't measure similarity — you <strong>follow the connections</strong>
+from a starting point. Here is a "who else works where Alice works?" question answered by hopping one step out and one
+step back:
+</p>
+<pre><code class="lang-python"># Data as connections: (thing) -[relationship]-> (thing)
+edges = [
+    ("Alice", "WORKS_AT", "Acme"),
+    ("Bob",   "WORKS_AT", "Acme"),
+    ("Carol", "WORKS_AT", "Globex"),
+]
 
-<p>This section builds a graph retrieval system on Neo4j with the official <code>neo4j</code> Python driver.</p>
+# Hop 1: where does Alice work?  Hop 2: who else works there?
+alice_orgs = [org for a, rel, org in edges if a == "Alice" and rel == "WORKS_AT"]
+coworkers  = [p for p, rel, org in edges
+              if rel == "WORKS_AT" and org in alice_orgs and p != "Alice"]
 
-<h3>Setup</h3>
-
-<pre class="lang-bash">docker run --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password -d neo4j:5</pre>
-
-<p>Install with <code>pip install neo4j fastapi uvicorn anthropic</code>. The driver pools connections — create one <code>Driver</code> per app and reuse it. Query <strong>parameters</strong> (<code>$id</code>, <code>$name</code>) can only stand in for values, never for labels, relationship types, or property keys — those are part of the query's structure and must be validated (e.g. against an allow-list) before string interpolation.</p>
-
-<pre><code class="lang-python">"""db.py — driver, parameterized helper, MERGE nodes + relationship, multi-hop MATCH."""
-from neo4j import GraphDatabase
-
-driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "password"))
-
-
-def run_query(query: str, parameters: dict | None = None) -&gt; list[dict]:
-    """Run a parameterized Cypher query; never interpolate user input into the
-    query text -- same discipline as parameterized SQL."""
-    with driver.session() as session:
-        return [record.data() for record in session.run(query, parameters or {})]
-
-
-# Constraint = uniqueness + backing index; MERGE matches-or-creates, so
-# ingestion scripts are safe to re-run (unlike CREATE, which always inserts).
-run_query("CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.id IS UNIQUE")
-run_query("CREATE CONSTRAINT company_id IF NOT EXISTS FOR (c:Company) REQUIRE c.id IS UNIQUE")
-
-run_query(
-    """
-    MERGE (a:Person {id: $pid}) SET a.name = $name
-    MERGE (c:Company {id: $cid}) SET c.name = $cname
-    MERGE (a)-[r:WORKS_AT]-&gt;(c) SET r.role = $role
-    """,
-    {"pid": "p1", "name": "Alice", "cid": "c1", "cname": "Acme Robotics", "role": "Engineer"},
-)
-
-# Multi-hop MATCH: companies reachable within 1..3 hops of KNOWS/WORKS_AT edges.
-# max_hops here is a fixed internal int, not raw user input, so interpolating
-# it into the pattern (relationship type/bounds can't be query parameters) is safe.
-rows = run_query(
-    """
-    MATCH (start:Person {name: $name})-[:KNOWS|WORKS_AT*1..3]-&gt;(reached)
-    WHERE reached:Company
-    RETURN DISTINCT reached.name AS company
-    """,
-    {"name": "Alice"},
-)
-</code></pre>
-
-<h3>GraphRAG</h3>
-
-<p>GraphRAG has two halves: an LLM extracts <code>(subject, relation, object)</code> triples from unstructured text, which are persisted as graph edges; then, per question, a bounded-hop subgraph around the relevant entity is retrieved, flattened into short triple lines, and passed to the LLM as grounding context — traceable to specific facts, unlike a wall of retrieved prose. Relationship types extracted by the LLM must be validated (alphanumeric allow-list) before being interpolated into Cypher, since they can't be passed as parameters.</p>
-
-<pre><code class="lang-python">import anthropic
-client = anthropic.Anthropic()
-
-response = client.messages.create(
-    model="claude-sonnet-5",
-    max_tokens=1024,
-    system=f"Answer using only these graph facts:\n{context}",  # context = flattened subgraph rows
-    messages=[{"role": "user", "content": question}],
-)
-</code></pre>
-
+print(coworkers)          # ['Bob']  <- found by relationship, not by text similarity</code></pre>
+<p>
+Real systems use a graph database like Neo4j and its query language, <strong>Cypher</strong>, which expresses that same
+multi-hop walk in a single readable line:
+</p>
+<pre><code class="lang-cypher">MATCH (alice:Person {name: 'Alice'})-[:WORKS_AT]-&gt;(org)&lt;-[:WORKS_AT]-(peer)
+RETURN peer.name</code></pre>
+<p>
+<strong>GraphRAG</strong> brings this to LLM apps: instead of dumping the top-k similar text chunks into a prompt, it
+retrieves a small, connected slice of the graph and hands the model those exact facts — traceable and explainable.
+</p>
 <div class="callout callout-info">
-<span class="tag">Trade-off</span>
-<p>LangChain's <code>GraphCypherQAChain</code> lets the LLM write Cypher itself from the schema (flexible, needs <code>allow_dangerous_requests=True</code>). The hand-rolled pattern above always runs a fixed, reviewed, bounded-hop query — prefer it in production; reach for the chain during prototyping.</p>
+<span class="tag">In one sentence</span>
+<p>Store how things are connected, then answer questions by walking the connections — the only method that can say two
+entities are exactly N relationships apart, not just "topically similar."</p>
 </div>
 
-<h2>4. Production &amp; Integration</h2>
-
-<p>The common integration shape is a FastAPI endpoint: entity in, traversed subgraph out as JSON.</p>
-
-<pre class="diagram">
-Client ──HTTP GET /graph-search──▶ FastAPI ──Cypher traversal──▶ Neo4j ──▶ JSON
-</pre>
-
-<pre><code class="lang-python">@app.get("/graph-search")
-def graph_search(entity: str, hops: int = 2) -&gt; dict:
-    if not 1 &lt;= hops &lt;= 4:
-        raise HTTPException(400, "hops must be between 1 and 4")
-    query = f"""
-        MATCH path = (start:Entity {{name: $name}})-[*1..{hops}]-(other:Entity)
-        UNWIND relationships(path) AS rel
-        RETURN DISTINCT startNode(rel).name AS from_entity, type(rel) AS relation,
-               endNode(rel).name AS to_entity
-    """
-    rows = run_query(query, {"name": entity})
-    if not rows:
-        raise HTTPException(404, f"No graph data for '{entity}'")
-    return {"entity": entity, "facts": rows}
-</code></pre>
-
-<p>For GraphRAG assistants, the strongest pattern is <strong>hybrid retrieval</strong>: a vector index finds topically relevant candidate entities, then graph traversal pulls the structured relationships around them — vector search answers "what's relevant," the graph answers "how is it connected."</p>
-
+<h2>4. When to Use It</h2>
+<p>Use a graph when the value lives in the <em>connections between</em> items, not in the items themselves.</p>
+<h3>Good fit — reach for it when…</h3>
 <ul>
-<li><strong>Constraints/indexes</strong> — every property used in a <code>MATCH</code> filter needs a backing index; uniqueness constraints provide both integrity and index.</li>
-<li><strong>Query profiling</strong> — prefix with <code>EXPLAIN</code> to see the plan, <code>PROFILE</code> to run it and see actual row counts/db hits per operator; catch label scans that should be index seeks.</li>
-<li><strong>Clustering/Aura</strong> — a causal cluster (self-managed) or Neo4j Aura (managed) gives a leader for writes plus followers/read replicas for scaling and failover.</li>
-<li><strong>Graph modeling effort</strong> — deciding what's a node vs. a property vs. a relationship is a real, continuous design cost that dominates database tuning; budget time for it before writing ingestion code.</li>
-<li><strong>Caching</strong> — cache expensive, frequently-repeated traversal results at the application layer; Neo4j's page cache handles hot data, but repeated multi-hop queries still benefit from an external cache.</li>
+<li><strong>The question is about relationships.</strong> "Who is linked to whom?", "what's two hops away?", "what path connects these two?"</li>
+<li><strong>Your domain is naturally a network.</strong> Fraud rings, recommendation graphs, supply chains, org charts, knowledge graphs.</li>
+<li><strong>You need multi-hop answers.</strong> "Is this transaction linked to a known-bad account through any chain of transfers?" — impossible for a similarity search.</li>
+<li><strong>Explainability matters.</strong> Every answer comes with the exact path of nodes and edges that produced it.</li>
 </ul>
+<h3>Poor fit — look elsewhere when…</h3>
+<ul>
+<li><strong>Your data is independent documents.</strong> A pile of articles with no meaningful links &rarr; <a href="#ch-dense">dense</a> or <a href="#ch-lexical">lexical</a> search is far simpler.</li>
+<li><strong>You just need "find similar text."</strong> Similarity is exactly what vector search does; a graph adds cost for no gain.</li>
+<li><strong>You can't invest in modeling.</strong> Deciding what's a node vs. a property vs. a relationship is ongoing design work — budget for it.</li>
+</ul>
+<div class="callout callout-tip">
+<span class="tag">Rule of thumb</span>
+<p>If your hardest questions start with "who/what is connected to…" or "how are these two related," use a graph. For
+LLM apps, the strongest setup is hybrid: vector search finds the relevant entities, then the graph explains how they connect.</p>
+</div>
 
 <h2>5. Popular Open Source Libraries</h2>
 
@@ -1107,174 +829,55 @@ knowledge bases that change often — not just a toy technique.
 <li><strong>Best for small, volatile corpora</strong> — personal knowledge bases, internal wikis, Obsidian-style vaults.</li>
 </ul>
 
-<h2>3. Development</h2>
-
+<h2>3. How It Works</h2>
 <p>
-The canonical pipeline has three steps, all on the official <code>anthropic</code> SDK: (1) scan a
-<code>docs/</code> folder into cheap candidate metadata (path + snippet, no LLM calls); (2) ask an LLM
-to <strong>select</strong> the relevant files, with structured output; (3) load only the selected
-files' full text and ask an LLM to <strong>answer</strong> with citations.
+Vectorless retrieval replaces the whole embed-store-search machine with two LLM steps. A <strong>cheap model
+selects</strong> which files are worth reading (from just their paths and a short snippet), then a <strong>stronger
+model reads</strong> those files in full and answers with citations. Relevance comes from the model actually
+understanding the text — no vectors anywhere:
 </p>
+<pre><code class="lang-python"># No embeddings, no vector database. The LLM decides what's relevant, then reads it.
+files = scan_folder("docs/")                 # [(path, first 400 chars), ...]  -- cheap, no model
 
+picked = cheap_llm(                          # Step 1: pick the relevant files
+    f"Which of these files answer the question: {question}?\n{files}"
+)
+
+answer = strong_llm(                         # Step 2: read them in full and cite
+    f"Answer using ONLY these documents:\n{load(picked)}\n\nQuestion: {question}"
+)</code></pre>
+<p>
+Because it reads the live files at query time, there is never a stale index to refresh — edit a document and the next
+question already sees the change. The cost is paid in tokens on every query instead of in infrastructure. For bigger
+folders, a <strong>hierarchical</strong> version first picks relevant sub-folders, then files, so no single prompt ever
+has to look at the entire corpus.
+</p>
 <div class="callout callout-info">
-<span class="tag">Note</span>
-<p>
-Use <code>claude-haiku-4-5-20251001</code> for the cheap selection step (runs on every query) and
-<code>claude-sonnet-5</code> for the answer step (needs real reading comprehension). Do not substitute
-retired identifiers such as <code>claude-3-5-sonnet</code>.
-</p>
+<span class="tag">In one sentence</span>
+<p>Let the LLM skim a list of files, choose the useful ones, and read them — trading indexing infrastructure for a bit
+more thinking per query, and staying perfectly up to date by construction.</p>
 </div>
 
-<pre><code class="lang-python">"""vectorless_search.py - scan docs/, LLM selects files, LLM answers with citations.
-
-No embeddings, no vector DB -- relevance and reading are both done by an LLM.
-    python vectorless_search.py "How do I configure retries?"
-"""
-from __future__ import annotations
-
-import sys
-from pathlib import Path
-
-from anthropic import Anthropic
-from pydantic import BaseModel, Field
-
-SELECT_MODEL = "claude-haiku-4-5-20251001"   # cheap filtering -- runs on every query
-ANSWER_MODEL = "claude-sonnet-5"              # reading + reasoning -- stronger model
-SNIPPET_CHARS = 400
-
-
-class RankedFile(BaseModel):
-    path: str
-    relevance: float = Field(ge=0.0, le=1.0)
-    reason: str
-
-
-class RetrievalResult(BaseModel):
-    selected: list[RankedFile]
-
-
-def scan_folder(root: str | Path) -&gt; list[tuple[str, str]]:
-    """Cheap metadata-only scan: (relative path, snippet). No LLM calls, no vectors."""
-    root = Path(root)
-    return [
-        (str(p.relative_to(root)), p.read_text(encoding="utf-8", errors="ignore")[:SNIPPET_CHARS])
-        for p in sorted(root.rglob("*.md"))
-    ]
-
-
-def select_relevant_files(
-    client: Anthropic, query: str, candidates: list[tuple[str, str]], top_k: int = 5
-) -&gt; list[RankedFile]:
-    """LLM picks the most relevant files from cheap metadata -- structured output."""
-    listing = "\n".join(f"PATH: {p}\nSNIPPET: {s}\n---" for p, s in candidates)
-    response = client.messages.parse(
-        model=SELECT_MODEL,
-        max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": f"Select up to {top_k} files relevant to: {query}\n\n{listing}",
-        }],
-        output_format=RetrievalResult,
-    )
-    ranked = sorted(response.parsed_output.selected, key=lambda r: r.relevance, reverse=True)
-    return ranked[:top_k]
-
-
-def answer_query(client: Anthropic, root: str | Path, query: str, paths: list[str]) -&gt; str:
-    """Load only the selected files' full text and ask for a grounded, cited answer."""
-    root = Path(root)
-    context = "\n\n".join(
-        f"=== FILE: {p} ===\n{(root / p).read_text(encoding='utf-8', errors='ignore')}" for p in paths
-    )
-    msg = client.messages.create(
-        model=ANSWER_MODEL,
-        max_tokens=2048,
-        system="Answer using ONLY the provided documents. Cite every claim as [path].",
-        messages=[{"role": "user", "content": f"DOCUMENTS:\n{context}\n\nQUESTION: {query}"}],
-    )
-    return next(b.text for b in msg.content if b.type == "text")
-
-
-if __name__ == "__main__":
-    client = Anthropic()  # reads ANTHROPIC_API_KEY
-    query = " ".join(sys.argv[1:]) or "How do I get started?"
-
-    candidates = scan_folder("docs")
-    ranked = select_relevant_files(client, query, candidates)
-    if not ranked:
-        print("No relevant documents found.")
-    else:
-        for r in ranked:
-            print(f"  selected: {r.path}  (relevance={r.relevance:.2f}) -- {r.reason}")
-        print("\n--- ANSWER ---\n")
-        print(answer_query(client, "docs", query, [r.path for r in ranked]))
-</code></pre>
-
-<div class="callout callout-info">
-<span class="tag">Note</span>
-<p>
-<code>client.messages.parse(..., output_format=RetrievalResult)</code> validates the model's JSON
-against the Pydantic schema automatically — the recommended way to get structured output from the
-Claude API, with no manual <code>json.loads</code> step and no risk of stray prose around the JSON.
-</p>
-</div>
-
-<p>
-<strong>Hierarchical retrieval</strong> scales this to larger corpora: a first pass asks the LLM to pick
-relevant top-level folders from a short list, then the file-level selector above runs only within those
-folders — no single prompt ever sees the whole corpus, however large it grows. <strong>Agentic
-retrieval</strong> goes further, giving the model tools (<code>list_files</code>, <code>read_file</code>,
-<code>grep</code>) and looping via the standard Anthropic tool-use pattern until it produces a final
-answer — useful when relevance depends on content a metadata snippet can't reveal, such as "which file
-mentions the v2 API?"
-</p>
-
-<h2>4. Production &amp; Integration</h2>
-
-<p>
-Wrapping the pipeline in a FastAPI endpoint turns it into a service any client can call. This single
-<code>/ask</code> endpoint <em>is</em> both retriever and generator — no separate retrieval service or
-vector-store client to stand up, which makes it a good fit for small, self-contained knowledge bases.
-</p>
-
-<pre><code class="lang-python">"""service.py - vectorless retrieval as a FastAPI endpoint."""
-from fastapi import FastAPI
-from pydantic import BaseModel
-from anthropic import Anthropic
-
-from vectorless_search import scan_folder, select_relevant_files, answer_query
-
-app = FastAPI(title="Vectorless Retrieval Service")
-client = Anthropic()
-DOCS_ROOT = "docs"
-
-
-class AskRequest(BaseModel):
-    query: str
-    top_k: int = 5
-
-
-@app.post("/ask")
-def ask(req: AskRequest) -&gt; dict:
-    candidates = scan_folder(DOCS_ROOT)
-    ranked = select_relevant_files(client, req.query, candidates, req.top_k)
-    if not ranked:
-        return {"answer": "No relevant documents found.", "sources": []}
-    sources = [r.path for r in ranked]
-    return {"answer": answer_query(client, DOCS_ROOT, req.query, sources), "sources": sources}
-</code></pre>
-
-<pre class="diagram">
-Query --&gt; LLM Retriever (haiku, cheap) --&gt; LLM Answerer (sonnet, cited) --&gt; Response
-</pre>
-
+<h2>4. When to Use It</h2>
+<p>Vectorless retrieval is the low-setup choice for small collections that change all the time.</p>
+<h3>Good fit — reach for it when…</h3>
 <ul>
-<li><strong>Context-window limits.</strong> The candidate listing (titles + snippets) must fit comfortably in context; past a few hundred documents, switch to hierarchical retrieval so no single prompt sees the whole corpus.</li>
-<li><strong>Prompt caching.</strong> Put the rendered candidate listing behind a <code>cache_control</code> breakpoint so repeated queries against an unchanged <code>docs/</code> folder reuse the cached prefix instead of re-billing full price.</li>
-<li><strong>Cost and latency.</strong> Every query pays for candidate listing, selection reasoning, and full-document reading — log token usage per query and cap <code>max_tokens</code> and candidate count deliberately.</li>
-<li><strong>Guardrails.</strong> Require citations in every answer, reject answers citing a path outside the selected set, and confine any agentic file tools to the docs root.</li>
-<li><strong>When to graduate to embeddings.</strong> Once the corpus reaches the low thousands of documents, or the candidate listing routinely eats a meaningful fraction of the context window, switch to embedding-based retrieval instead of scaling hierarchical passes indefinitely.</li>
+<li><strong>The corpus is small.</strong> A personal notes vault, a team wiki, a repository's <code>docs/</code> folder — up to a few hundred documents.</li>
+<li><strong>It changes constantly.</strong> No index to rebuild means edits are reflected instantly, with zero maintenance.</li>
+<li><strong>You want zero infrastructure.</strong> No embedding model, no vector database, no re-indexing job — a couple of files and an API key.</li>
+<li><strong>You're prototyping.</strong> A perfect MVP to prove value before investing in a full retrieval stack.</li>
 </ul>
+<h3>Poor fit — look elsewhere when…</h3>
+<ul>
+<li><strong>The corpus is large.</strong> Thousands of documents won't fit in a prompt to list &rarr; switch to <a href="#ch-dense">dense</a> (embedding) retrieval.</li>
+<li><strong>You have high traffic or tight latency/cost budgets.</strong> Every query spends tokens reading documents, which adds up fast.</li>
+<li><strong>The content is large and stable.</strong> A one-time index amortizes far better than re-reading on every question.</li>
+</ul>
+<div class="callout callout-tip">
+<span class="tag">Rule of thumb</span>
+<p>Great for <em>small and fast-changing</em>. As the collection grows into the thousands of documents — or queries get
+frequent enough that token cost bites — graduate to embedding-based retrieval, often keeping vectorless for the volatile edges.</p>
+</div>
 
 <h2>5. Popular Open Source Libraries</h2>
 
@@ -1325,257 +928,58 @@ embedding-based retrieval takes over — often alongside it, for the large, stab
 <li><strong>No data migration</strong> — nothing is copied into a central store; each source is queried live, so freshness and ownership stay exactly where they already are.</li>
 </ul>
 
-<h2>3. Development</h2>
+<h2>3. How It Works</h2>
+<p>
+Federated retrieval isn't a new search algorithm — it's a <strong>coordination layer</strong> over search engines you
+already have. It does three things: <strong>fan out</strong> the query to every source at the same time,
+<strong>normalize</strong> each response into one common shape, and <strong>merge</strong> the separate ranked lists
+into one. The tricky part is the merge: a GitHub score and a database score aren't comparable, so
+<strong>Reciprocal Rank Fusion (RRF)</strong> ignores raw scores and looks only at each result's <em>rank</em>:
+</p>
+<pre><code class="lang-python"># Each source returns its OWN ranked list. Their scores aren't comparable,
+# so we merge by rank position instead, using Reciprocal Rank Fusion.
+results = {
+    "github": ["A", "B", "C"],     # A ranked #1 here
+    "slack":  ["B", "D"],          # B ranked #1 here
+}
 
-<p>A federated search library needs four pieces: a shared <code>Result</code>/<code>Source</code> contract, one or more connectors that implement it, a concurrent federator with per-source timeouts, and Reciprocal Rank Fusion to merge the results.</p>
+k, fused = 60, {}
+for source, ranked in results.items():
+    for rank, doc in enumerate(ranked, start=1):
+        fused[doc] = fused.get(doc, 0) + 1 / (k + rank)   # add 1 / (k + rank)
 
-<h3>Schema and Source Protocol</h3>
-
-<p>Every connector normalizes into <code>Result</code> and implements <code>Source</code>. The federator only ever talks to this interface — it never imports a connector's HTTP client or knows a source's native response shape.</p>
-
-<pre><code class="lang-python">from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
-
-
-@dataclass(slots=True)
-class Result:
-    """A single normalized search result, regardless of origin system."""
-
-    source: str             # e.g. "github", "notion", "elasticsearch"
-    id: str                 # source-native identifier (unique within that source)
-    title: str
-    url: str
-    snippet: str
-    score: float = 0.0      # native relevance score -- NOT comparable across sources
-    rank: int = 0            # 1-indexed rank within this source's own result list
-    metadata: dict = field(default_factory=dict)
-
-
-@runtime_checkable
-class Source(Protocol):
-    """Every connector implements this -- the only contract the federator relies on."""
-
-    name: str
-
-    async def search(self, query: str, limit: int = 10) -&gt; list[Result]:
-        """Return up to `limit` results, ranked best-first.
-
-        Must not raise on an empty result set -- only on an unrecoverable
-        connector failure (auth error, network failure). The federator
-        turns that into a logged, non-fatal empty list.
-        """
-        ...</code></pre>
-
-<h3>Connectors</h3>
-
-<p><strong>GitHub</strong> — code search via the REST <code>/search/code</code> endpoint, authenticated with a personal access token:</p>
-
-<pre><code class="lang-python">from __future__ import annotations
-
-import os
-
-import httpx
-
-from ..base import Result
-
-
-class GitHubSource:
-    """Searches GitHub code via the REST /search/code endpoint."""
-
-    name = "github"
-
-    def __init__(self, token: str | None = None, timeout: float = 5.0) -&gt; None:
-        self._token = token or os.environ["GITHUB_TOKEN"]
-        self._timeout = timeout
-
-    async def search(self, query: str, limit: int = 10) -&gt; list[Result]:
-        headers = {
-            "Authorization": f"Bearer {self._token}",
-            "Accept": "application/vnd.github+json",
-        }
-        params = {"q": query, "per_page": min(limit, 30)}
-
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.get(
-                "https://api.github.com/search/code",
-                headers=headers,
-                params=params,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-
-        results: list[Result] = []
-        for rank, item in enumerate(payload.get("items", [])[:limit], start=1):
-            results.append(
-                Result(
-                    source=self.name,
-                    id=str(item["sha"]),
-                    title=item["path"],
-                    url=item["html_url"],
-                    snippet=item["repository"]["full_name"],
-                    score=item.get("score", 0.0),
-                    rank=rank,
-                )
-            )
-        return results</code></pre>
-
-<p><strong>Mock/local source</strong> — same contract, no network, useful for tests and local development:</p>
-
-<pre><code class="lang-python">class MockSource:
-    """In-memory Source for tests -- implements the identical contract."""
-
-    name = "mock"
-
-    def __init__(self, docs: list[Result]) -&gt; None:
-        self._docs = docs
-
-    async def search(self, query: str, limit: int = 10) -&gt; list[Result]:
-        return self._docs[:limit]</code></pre>
-
-<p>Additional connectors (Slack, Notion, Drive, an internal Elasticsearch cluster, ...) follow this exact pattern — implement <code>name</code> and <code>async def search()</code>, normalize into <code>Result</code>.</p>
-
-<h3>Federator: Concurrent Fan-Out With Timeouts</h3>
-
-<p>The federator runs every source's <code>search()</code> concurrently, bounds each with a timeout, and turns any failure into an empty result for that source rather than an exception that kills the whole request:</p>
-
-<pre><code class="lang-python">from __future__ import annotations
-
-import asyncio
-import logging
-
-from .base import Result, Source
-
-logger = logging.getLogger("federated_search")
-
-
-async def _search_one(source: Source, query: str, limit: int, timeout: float) -&gt; list[Result]:
-    """Run one source under a hard timeout; never raises."""
-    try:
-        return await asyncio.wait_for(source.search(query, limit), timeout=timeout)
-    except TimeoutError:
-        logger.warning("source %s timed out after %.1fs", source.name, timeout)
-        return []
-    except Exception as exc:  # noqa: BLE001 -- a connector failure must not propagate
-        logger.warning("source %s failed: %s", source.name, exc)
-        return []
-
-
-async def federated_search(
-    sources: list[Source],
-    query: str,
-    limit_per_source: int = 10,
-    timeout: float = 3.0,
-) -&gt; dict[str, list[Result]]:
-    """Fan out `query` to every source concurrently.
-
-    A slow or failing source degrades results for itself only -- it
-    never blocks or drops the others. Total latency tracks `timeout`,
-    not the sum of every source's response time.
-    """
-    tasks = [_search_one(source, query, limit_per_source, timeout) for source in sources]
-    per_source_results = await asyncio.gather(*tasks)
-    return {
-        source.name: results
-        for source, results in zip(sources, per_source_results, strict=True)
-    }</code></pre>
-
-<div class="callout callout-warning">
-<span class="tag">Warning</span>
-<p>Never swallow a source failure without logging it — an unlogged empty list looks identical to "this source legitimately had no matches," and nobody notices a broken connector until a user asks why one source never shows up.</p>
+print(sorted(fused, key=fused.get, reverse=True))
+# ['B', 'A', 'C', 'D']  <- B wins: it appeared near the top of TWO sources</code></pre>
+<p>
+The fan-out runs concurrently, so total time tracks the <em>slowest</em> source, not the sum of all of them — and if
+one source is down, the others still return. Each system keeps its own data, its own search method, and its own
+permissions; the federated layer owns only the query and the merge, never the data.
+</p>
+<div class="callout callout-info">
+<span class="tag">In one sentence</span>
+<p>Ask many independent systems at once and blend their rankings into one list, without ever copying their data into a
+shared index — the answer can live anywhere, and the user only sees one search box.</p>
 </div>
 
-<h3>Fusion: Reciprocal Rank Fusion</h3>
-
-<p>Native scores aren't comparable across systems — a GitHub relevance score and a BM25 score live on different, unbounded scales. RRF sidesteps that entirely by only looking at each result's <em>rank</em> within its own source's list:</p>
-
-<pre class="diagram">
-score(doc) = sum over every source that returned doc of  1 / (k + rank_in_that_source)
-</pre>
-
-<pre><code class="lang-python">from __future__ import annotations
-
-from .base import Result
-
-
-def reciprocal_rank_fusion(
-    per_source_results: dict[str, list[Result]],
-    k: int = 60,
-) -&gt; list[Result]:
-    """Merge ranked lists from heterogeneous sources into one ranking.
-
-    Ignores native scores entirely; works only from each result's rank
-    within its own source's list, so every source's contribution lands
-    on the same bounded scale. `k` (default 60, the standard value from
-    the original RRF paper) dampens any single top rank from dominating.
-    """
-    fused_scores: dict[tuple[str, str], float] = {}
-    result_by_key: dict[tuple[str, str], Result] = {}
-
-    for source_name, results in per_source_results.items():
-        for result in results:
-            key = (source_name, result.id)
-            fused_scores[key] = fused_scores.get(key, 0.0) + 1.0 / (k + result.rank)
-            result_by_key[key] = result
-
-    ranked_keys = sorted(fused_scores, key=lambda key: fused_scores[key], reverse=True)
-    fused: list[Result] = []
-    for key in ranked_keys:
-        result = result_by_key[key]
-        result.metadata["rrf_score"] = round(fused_scores[key], 5)
-        fused.append(result)
-    return fused</code></pre>
-
-<p>An optional rerank pass over the fused top-N can reorder by semantic judgment RRF can't express, using the Anthropic API (<code>claude-sonnet-5</code>) with a JSON-schema-constrained response for a guaranteed-parseable ordering. Frameworks ship equivalent fan-out-and-fuse blocks too: LangChain's <code>EnsembleRetriever</code> combines multiple retrievers with RRF-style fusion, and LlamaIndex's <code>QueryFusionRetriever</code> dispatches across multiple indexes and fuses the results.</p>
-
-<h2>4. Production &amp; Integration</h2>
-
-<p>The most common shape is a single async endpoint fronting an enterprise assistant that searches every internal and third-party system — Slack, Notion, GitHub, Confluence — through one interface, regardless of which tool holds the answer:</p>
-
-<pre class="diagram">
-Client -&gt; FastAPI /federated-search -&gt; asyncio.gather(sources) -&gt; RRF fusion -&gt; JSON response
-</pre>
-
-<pre><code class="lang-python">from fastapi import FastAPI, Query
-
-from federated_search.base import Source
-from federated_search.connectors.github import GitHubSource
-from federated_search.federator import federated_search
-from federated_search.fusion import reciprocal_rank_fusion
-
-app = FastAPI(title="Federated Search API")
-SOURCES: list[Source] = [GitHubSource()]  # add one Source per system
-
-
-@app.get("/federated-search")
-async def search(q: str = Query(..., min_length=1), top_n: int = 10):
-    per_source = await federated_search(SOURCES, query=q, timeout=3.0)
-    fused = reciprocal_rank_fusion(per_source)[:top_n]
-    return {
-        "query": q,
-        "results": [
-            {
-                "source": r.source,
-                "title": r.title,
-                "url": r.url,
-                "score": r.metadata.get("rrf_score", r.score),
-            }
-            for r in fused
-        ],
-    }</code></pre>
-
+<h2>4. When to Use It</h2>
+<p>Federated retrieval is for when your knowledge is scattered across systems that must stay where they are.</p>
+<h3>Good fit — reach for it when…</h3>
 <ul>
-<li><strong>Per-source auth &amp; secrets.</strong> Each connector's credential is scoped to that source only and pulled from a secrets manager; rotate them independently.</li>
-<li><strong>Permission-aware filtering.</strong> Pass the requesting user's own credentials (or an on-behalf-of token) into each connector so the source itself enforces access control — the federator must never widen access.</li>
-<li><strong>Latency bounded by the slowest source.</strong> Per-source <code>timeout</code> plus <code>asyncio.gather</code> keep one degraded connector from stalling the request; return partial results instead of failing the whole call.</li>
-<li><strong>Caching.</strong> Cache normalized per-source results (not just the fused response), keyed by <code>(source, query, permission-scope)</code>, with TTLs short enough for fast-moving sources.</li>
-<li><strong>Connector maintenance.</strong> Each third-party API can change its schema or auth model on its own timeline — give every connector its own health check and owner.</li>
+<li><strong>The data lives in many places.</strong> An enterprise "search everything" assistant across GitHub, Slack, Notion, Drive, and internal databases at once.</li>
+<li><strong>Sources can't or shouldn't be merged.</strong> Different owners, different update schedules, or compliance rules that forbid copying data into one store.</li>
+<li><strong>Permissions differ per source.</strong> Query each system with the user's own credentials so it enforces its own access control — nothing is over-shared.</li>
+<li><strong>A central index would go stale.</strong> Live querying keeps every result as fresh as the source itself.</li>
 </ul>
-
-<div class="callout callout-warning">
-<span class="tag">Warning</span>
-<p>Permission-aware filtering is the easiest thing to get wrong: caching across users, or querying a source with a privileged service account instead of the requester's own scope, silently turns the federator into a way to leak data a user could never reach directly.</p>
+<h3>Poor fit — look elsewhere when…</h3>
+<ul>
+<li><strong>Everything already lives in one system.</strong> Just index that one system well — a single index is simpler and faster than N connectors.</li>
+<li><strong>You can consolidate cheaply.</strong> If the data <em>can</em> move into one store, that usually beats maintaining a connector per source.</li>
+<li><strong>You need deep cross-source relevance tuning.</strong> RRF merges by rank only; it's robust but coarse, and can't express fine semantic judgments across systems.</li>
+</ul>
+<div class="callout callout-tip">
+<span class="tag">Rule of thumb</span>
+<p>Federate when the data <em>must</em> stay where it is; consolidate when it <em>can</em> move. The real work isn't the
+fan-out — it's honoring each source's permissions and keeping every connector healthy over time.</p>
 </div>
 
 <h2>5. Popular Open Source Libraries</h2>
@@ -1606,7 +1010,7 @@ async def search(q: str = Query(..., min_length=1), top_n: int = 10):
 </section>
 
     <footer style="max-width:920px;margin:0 auto;padding:48px 0 20px;color:var(--muted);font-size:.9rem">
-      <p><strong>Modern Retrieval Systems — A Developer's Implementation Handbook.</strong> Restructured as an implementation-first engineering guide. Verify library versions and provider pricing against upstream docs before shipping.</p>
+      <p><strong>Modern Retrieval Systems — A Concepts &amp; Use-Case Guide.</strong> Focused on understanding each method and knowing when to reach for it, with small illustrative snippets rather than full implementations. Verify library versions and provider pricing against upstream docs before building.</p>
     </footer>
   </main>
 </div>

@@ -227,7 +227,7 @@
     </ol>
     <h2>Per-chapter layout</h2>
     <ol style="counter-reset:none">
-      <li style="padding:3px 10px;color:var(--muted);font-size:.82rem">Definition → <strong>Development</strong> → Production &amp; Integration → Libraries → Summary</li>
+      <li style="padding:3px 10px;color:var(--muted);font-size:.82rem">Definition → Key Features → <strong>Development</strong> → Production &amp; Integration → Libraries → Summary</li>
     </ol>
   </aside>
   <main class="content">
@@ -263,7 +263,18 @@ the right tool when things must match exactly — product SKUs, error codes, fun
 <p>"Sparse" and "lexical" mean almost the same thing here. <strong>Sparse</strong> describes how the text is stored — as a long list of word counts that is mostly zeros, since most words never appear in any given document. <strong>Lexical</strong> describes the strategy — matching the exact words. BM25 is the standard formula for scoring those matches.</p>
 </div>
 
-<h2>2. Development</h2>
+<h2>2. Key Features</h2>
+<ul>
+<li><strong>Exact token matching</strong> — no hallucinated relevance; a term either appears in a document or it doesn't.</li>
+<li><strong>Inverted index</strong> — O(1) amortized term lookup via a hash map, no full corpus scan.</li>
+<li><strong>BM25/TF-IDF ranking</strong> — tunable, well-understood, no training step.</li>
+<li><strong>Very low latency</strong> — single-digit ms queries at scale, no GPU in the critical path.</li>
+<li><strong>Cheap infrastructure</strong> — runs on commodity CPU/RAM only.</li>
+<li><strong>Interpretable</strong> — every score is explainable from term frequency, IDF, and length norm.</li>
+<li><strong>Battle-tested at scale</strong> — decades of Lucene-derived production hardening (Elasticsearch, OpenSearch, Solr).</li>
+</ul>
+
+<h2>3. Development</h2>
 <pre class="lang-bash">
 pip install rank-bm25 nltk
 python3 -c "import nltk; nltk.download('stopwords')"
@@ -350,7 +361,7 @@ if __name__ == "__main__":
 </div>
 <p>For a persistent inverted index at scale, use Whoosh (embedded) or OpenSearch/Elasticsearch (BM25 by default).</p>
 
-<h2>3. Production &amp; Integration</h2>
+<h2>4. Production &amp; Integration</h2>
 <pre class="diagram">
 Client → GET /search?q=...&amp;top_k=5 → FastAPI → BM25 engine → JSON (ranked docs + scores)
 </pre>
@@ -384,7 +395,7 @@ config keys, legal citations).
 <p>Precompute (index at write time) whenever the corpus changes slowly relative to query volume — the common case. Reserve query-time scoring (scripted fields) for attributes that change too fast to justify re-indexing; it bypasses the fast inverted-index path.</p>
 </div>
 
-<h2>4. Popular Open Source Libraries</h2>
+<h2>5. Popular Open Source Libraries</h2>
 <div class="table-wrap">
 <table>
 <thead>
@@ -403,7 +414,7 @@ config keys, legal citations).
 </table>
 </div>
 
-<h2>5. Summary</h2>
+<h2>6. Summary</h2>
 <p>
 Lexical search matches query tokens against an inverted index and ranks candidates with BM25 — no embedding
 model or GPU, very low latency, fully explainable. It's the right default for exact identifier lookup, code
@@ -431,7 +442,18 @@ indexes (HNSW, IVF, PQ) that find the near-matches far faster, accepting a tiny 
 speed gain.
 </p>
 
-<h2>2. Development</h2>
+<h2>2. Key Features</h2>
+<ul>
+<li><strong>Semantic matching</strong> — retrieves by meaning, handling synonyms, paraphrase, and cross-lingual queries.</li>
+<li><strong>Embedding models</strong> — pretrained bi-encoders (sentence-transformers, OpenAI, Cohere) map text to fixed-size vectors in one forward pass.</li>
+<li><strong>Similarity metrics</strong> — cosine, dot product, and Euclidean (L2) distance quantify vector closeness.</li>
+<li><strong>ANN indexes</strong> — HNSW, IVF, and Product Quantization enable sub-linear search at scale for a small recall cost.</li>
+<li><strong>Multilingual support</strong> — multilingual embedding models place equivalent sentences from different languages near each other.</li>
+<li><strong>RAG backbone</strong> — supplies the "R" in RAG, grounding LLM output in retrieved, citable text.</li>
+<li><strong>Millisecond retrieval at scale</strong> — ANN indexes return top-k from billions of vectors in single-digit milliseconds.</li>
+</ul>
+
+<h2>3. Development</h2>
 <pre class="lang-bash">
 pip install sentence-transformers faiss-cpu numpy
 </pre>
@@ -487,7 +509,7 @@ persistence.
 </p>
 </div>
 
-<h2>3. Production &amp; Integration</h2>
+<h2>4. Production &amp; Integration</h2>
 <p>
 Retrieval is typically exposed as an HTTP service and used as the retrieval stage of a RAG pipeline:
 </p>
@@ -529,7 +551,7 @@ Query:  Client -&gt; Embed Query (cached) -&gt; ANN Search + Filter -&gt; Top-K 
 <li><strong>Caching</strong> — cache query embeddings and repeated search results to cut embedding and ANN load.</li>
 </ul>
 
-<h2>4. Popular Open Source Libraries</h2>
+<h2>5. Popular Open Source Libraries</h2>
 <div class="table-wrap">
 <table>
 <thead>
@@ -548,7 +570,7 @@ Query:  Client -&gt; Embed Query (cached) -&gt; ANN Search + Filter -&gt; Top-K 
 </table>
 </div>
 
-<h2>5. Summary</h2>
+<h2>6. Summary</h2>
 <p>
 Dense vector search encodes text into embeddings and retrieves by cosine/dot-product similarity, using
 ANN indexes (HNSW, IVF, PQ) to stay fast at scale — matching on meaning rather than exact wording, which
@@ -585,7 +607,17 @@ weighted words.
 </p>
 </div>
 
-<h2>2. Development</h2>
+<h2>2. Key Features</h2>
+<ul>
+<li><strong>Term expansion</strong> — activates semantically related vocabulary terms absent from the source text, closing BM25's vocabulary-mismatch gap.</li>
+<li><strong>Sparse weighted vectors</strong> — typically 100&ndash;400 nonzero entries out of a ~30K vocabulary.</li>
+<li><strong>Inverted-index compatible</strong> — nonzero weights map onto postings lists; scoring is a dot product over shared terms, no HNSW graph or vector DB required.</li>
+<li><strong>Interpretable</strong> — decode token ids back to strings to see exactly which terms fired and why, useful for debugging relevance.</li>
+<li><strong>Strong first-stage recall</strong> — matches or beats BM25 and competes with dense bi-encoders on BEIR benchmarks.</li>
+<li><strong>Drop-in for existing search infra</strong> — bolts onto Lucene/Elasticsearch/OpenSearch via <code>rank_features</code> or native neural-sparse fields.</li>
+</ul>
+
+<h2>3. Development</h2>
 <pre class="lang-bash">pip install transformers torch</pre>
 <p>
 Load <code>AutoModelForMaskedLM</code> (not plain <code>AutoModel</code>) because SPLADE needs the
@@ -677,7 +709,7 @@ Elasticsearch <code>rank_features</code>, or OpenSearch neural sparse — all sc
 dot product over matching postings, identical relevance to the in-memory index above.
 </p>
 
-<h2>3. Production &amp; Integration</h2>
+<h2>4. Production &amp; Integration</h2>
 <p>
 Sparse retrieval splits cleanly into an expensive offline stage and a cheap online stage: document
 vectors are precomputed once, in batches, on GPU; query vectors are encoded per-request on a
@@ -724,7 +756,7 @@ For hybrid search, fuse SPLADE's ranking with BM25 or a dense retriever via Reci
 <li>Expansion multiplies term count per document versus raw tokenization; plan storage and reindex windows accordingly.</li>
 </ul>
 
-<h2>4. Popular Open Source Libraries</h2>
+<h2>5. Popular Open Source Libraries</h2>
 <div class="table-wrap">
 <table>
 <thead>
@@ -742,7 +774,7 @@ For hybrid search, fuse SPLADE's ranking with BM25 or a dense retriever via Reci
 </table>
 </div>
 
-<h2>5. Summary</h2>
+<h2>6. Summary</h2>
 <p>
 Learned sparse retrieval, exemplified by SPLADE, replaces BM25's fixed term-frequency heuristics
 with a neural model that expands documents/queries into semantically related vocabulary while
@@ -769,7 +801,18 @@ then add up those best matches — <code>score(Q, D) = Σ_i max_j cos(q_i, d_j)<
 means the fine details aren't blurred away by averaging, which is why it's the top choice for long,
 many-topic documents and the go-to second-pass reranker in high-precision RAG pipelines.</p>
 
-<h2>2. Development</h2>
+<h2>2. Key Features</h2>
+
+<ul>
+<li><strong>Token-level embeddings</strong> — every token gets its own vector instead of being pooled away.</li>
+<li><strong>Late interaction / MaxSim</strong> — relevance is a sum of per-token maximum similarities, not a single dot product.</li>
+<li><strong>High retrieval accuracy</strong> — consistently outperforms single-vector dense retrieval on precision-sensitive benchmarks (BEIR, LoTTE).</li>
+<li><strong>Strong on long, multi-topic documents</strong> — each token contributes independently instead of being averaged away.</li>
+<li><strong>Excellent reranking signal</strong> — the standard second stage after a cheap first-stage retriever (BM25 or single-vector dense).</li>
+<li><strong>Higher storage cost</strong> — one vector per token instead of one per document multiplies index size roughly by token count.</li>
+</ul>
+
+<h2>3. Development</h2>
 
 <p>MaxSim's entire mathematical core in PyTorch — two L2-normalized token matrices, a matmul, a row-wise max, and a sum:</p>
 
@@ -823,7 +866,7 @@ plus a quantized residual, pruning candidates by cheap centroid similarity befor
 the survivors.</p>
 </div>
 
-<h2>3. Production &amp; Integration</h2>
+<h2>4. Production &amp; Integration</h2>
 
 <p>The canonical pattern: a cheap first-stage retriever (BM25 or single-vector dense) produces ~100
 candidates, ColBERT MaxSim reranks them, and the top 5 go to the LLM — typically wrapped as a FastAPI
@@ -861,7 +904,7 @@ whose <em>average</em> embedding happens to be closest to the query.</p>
 <li><strong>GPU/latency.</strong> Encoding and Stage-2 MaxSim want GPU batching; Stage-1 candidate search runs fine on CPU. Precompute and cache document token embeddings at index time — only the query is encoded on the request path.</li>
 </ul>
 
-<h2>4. Popular Open Source Libraries</h2>
+<h2>5. Popular Open Source Libraries</h2>
 
 <div class="table-wrap">
 <table>
@@ -879,7 +922,7 @@ whose <em>average</em> embedding happens to be closest to the query.</p>
 </table>
 </div>
 
-<h2>5. Summary</h2>
+<h2>6. Summary</h2>
 
 <p>Multi-vector search replaces one pooled embedding per document with one embedding per token, and replaces
 a single dot product with MaxSim late interaction, preserving detail that single-vector averaging destroys.
@@ -897,7 +940,18 @@ final answer.</p>
 
 <p>Graph-based retrieval stores your data as a <strong>property graph</strong> — <em>nodes</em> for things (people, companies, products) joined by labeled, directional <em>edges</em> that describe how they relate (<code>WORKS_AT</code>, <code>PRODUCES</code>), where both nodes and edges can carry extra key-value details. To answer a question, it <strong>follows the connections</strong> outward from a starting node instead of measuring how similar two pieces of text are. That makes it perfect for "who is connected to what" questions — "who else works where Alice used to work?", "is this transaction linked to a known fraud ring?" — which are answered by hopping across relationships. A vector index simply can't do this: it can tell you two documents are on similar topics, but not that two specific entities are exactly two hops apart. <strong>GraphRAG</strong> brings this to LLM apps: instead of dumping the top-k similar text chunks into the prompt, it pulls out a small, structured, explainable slice of the graph and hands that to the model as context.</p>
 
-<h2>2. Development</h2>
+<h2>2. Key Features</h2>
+
+<ul>
+<li><strong>Nodes, edges, properties</strong> — labeled entities and typed, directed relationships, both with arbitrary key-value attributes.</li>
+<li><strong>Relationship traversal</strong> — retrieval is a graph walk (Cypher <code>MATCH</code>), not nearest-neighbor search.</li>
+<li><strong>Multi-hop reasoning</strong> — one query follows chains of relationships several hops deep in a single round trip.</li>
+<li><strong>Explainable paths</strong> — every result comes with the exact node/edge path that produced it, not a black-box similarity score.</li>
+<li><strong>Cypher query language</strong> — declarative pattern matching, roughly SQL for graphs.</li>
+<li><strong>Strength on connected data</strong> — fraud rings, recommendation networks, supply chains, and knowledge graphs are naturally graph-shaped.</li>
+</ul>
+
+<h2>3. Development</h2>
 
 <p>This section builds a graph retrieval system on Neo4j with the official <code>neo4j</code> Python driver.</p>
 
@@ -967,7 +1021,7 @@ response = client.messages.create(
 <p>LangChain's <code>GraphCypherQAChain</code> lets the LLM write Cypher itself from the schema (flexible, needs <code>allow_dangerous_requests=True</code>). The hand-rolled pattern above always runs a fixed, reviewed, bounded-hop query — prefer it in production; reach for the chain during prototyping.</p>
 </div>
 
-<h2>3. Production &amp; Integration</h2>
+<h2>4. Production &amp; Integration</h2>
 
 <p>The common integration shape is a FastAPI endpoint: entity in, traversed subgraph out as JSON.</p>
 
@@ -1001,7 +1055,7 @@ def graph_search(entity: str, hops: int = 2) -&gt; dict:
 <li><strong>Caching</strong> — cache expensive, frequently-repeated traversal results at the application layer; Neo4j's page cache handles hot data, but repeated multi-hop queries still benefit from an external cache.</li>
 </ul>
 
-<h2>4. Popular Open Source Libraries</h2>
+<h2>5. Popular Open Source Libraries</h2>
 
 <div class="table-wrap">
 <table>
@@ -1020,7 +1074,7 @@ def graph_search(entity: str, hops: int = 2) -&gt; dict:
 </table>
 </div>
 
-<h2>5. Summary</h2>
+<h2>6. Summary</h2>
 
 <p>Graph-based retrieval answers "what's connected, and by what path?" rather than "what's similar?" — Neo4j and Cypher provide the storage and pattern-matching traversal, including bounded multi-hop walks in a single query. GraphRAG extends this to LLM apps by extracting triples, persisting them as a graph, and retrieving a small explainable subgraph as grounding context, at the ongoing cost of real graph-modeling effort — a cost worth paying when the domain (fraud, recommendations, supply chains, knowledge graphs) is inherently relational rather than a set of independent documents.</p>
 
@@ -1042,7 +1096,18 @@ tuning chunk sizes) but you pay more for LLM calls. That makes it a genuinely go
 knowledge bases that change often — not just a toy technique.
 </p>
 
-<h2>2. Development</h2>
+<h2>2. Key Features</h2>
+
+<ul>
+<li><strong>No embedding pipeline or vector database</strong> — nothing to provision, version, or re-run when documents change.</li>
+<li><strong>Always up to date</strong> — reads current files at query time; no stale index to refresh.</li>
+<li><strong>Leverages full LLM reasoning</strong> — relevance judgments benefit from language understanding, not dense-vector similarity.</li>
+<li><strong>Simple architecture</strong> — two or three Python files implement a working system, no extra services to deploy.</li>
+<li><strong>Higher inference cost per query</strong> — every query spends tokens on candidate listing, selection, and full-document reading.</li>
+<li><strong>Best for small, volatile corpora</strong> — personal knowledge bases, internal wikis, Obsidian-style vaults.</li>
+</ul>
+
+<h2>3. Development</h2>
 
 <p>
 The canonical pipeline has three steps, all on the official <code>anthropic</code> SDK: (1) scan a
@@ -1164,7 +1229,7 @@ answer — useful when relevance depends on content a metadata snippet can't rev
 mentions the v2 API?"
 </p>
 
-<h2>3. Production &amp; Integration</h2>
+<h2>4. Production &amp; Integration</h2>
 
 <p>
 Wrapping the pipeline in a FastAPI endpoint turns it into a service any client can call. This single
@@ -1211,7 +1276,7 @@ Query --&gt; LLM Retriever (haiku, cheap) --&gt; LLM Answerer (sonnet, cited) --
 <li><strong>When to graduate to embeddings.</strong> Once the corpus reaches the low thousands of documents, or the candidate listing routinely eats a meaningful fraction of the context window, switch to embedding-based retrieval instead of scaling hierarchical passes indefinitely.</li>
 </ul>
 
-<h2>4. Popular Open Source Libraries</h2>
+<h2>5. Popular Open Source Libraries</h2>
 
 <div class="table-wrap">
 <table>
@@ -1229,7 +1294,7 @@ Query --&gt; LLM Retriever (haiku, cheap) --&gt; LLM Answerer (sonnet, cited) --
 </table>
 </div>
 
-<h2>5. Summary</h2>
+<h2>6. Summary</h2>
 
 <p>
 Vectorless retrieval replaces the embed-store-search pipeline with a read-reason-select loop: a cheap
@@ -1249,7 +1314,18 @@ embedding-based retrieval takes over — often alongside it, for the large, stab
 
 <p><strong>Federated retrieval</strong> is a coordination layer that sends one query out to many independent sources at the same time — GitHub, Slack, Notion, a vector store, an internal database — without first copying all their data into one shared index. Each source replies in its own format; the federated layer then reshapes every response into one common schema and merges the separate rankings into a single ordered list. The key idea is that each source keeps its own storage, its own search method, and its own notion of relevance — the federated layer owns only the <em>query</em> (fan it out) and the <em>merge</em> (combine the results), never the data itself. Reach for it when the sources genuinely can't or shouldn't be combined into one place — different owners, different access rules, or different update schedules. If everything already lives in one system, a single good index over that system is simpler.</p>
 
-<h2>2. Development</h2>
+<h2>2. Key Features</h2>
+
+<ul>
+<li><strong>Query distribution (fan-out)</strong> — the query is dispatched to every source concurrently, not sequentially, so total latency tracks the slowest source, not the sum of all of them.</li>
+<li><strong>Result normalization</strong> — each source's native response shape is mapped into one common schema before anything downstream touches it.</li>
+<li><strong>Unified ranking (RRF)</strong> — results from sources with incomparable, unbounded relevance scales are merged into one ranked list via Reciprocal Rank Fusion.</li>
+<li><strong>Permission-aware retrieval</strong> — the federator returns only what the requesting user is authorized to see in each source, never widening access beyond what the source itself grants.</li>
+<li><strong>Heterogeneous back-ends</strong> — full-text indexes, vector stores, relational databases, or third-party REST APIs sit behind one uniform contract.</li>
+<li><strong>No data migration</strong> — nothing is copied into a central store; each source is queried live, so freshness and ownership stay exactly where they already are.</li>
+</ul>
+
+<h2>3. Development</h2>
 
 <p>A federated search library needs four pieces: a shared <code>Result</code>/<code>Source</code> contract, one or more connectors that implement it, a concurrent federator with per-source timeouts, and Reciprocal Rank Fusion to merge the results.</p>
 
@@ -1453,7 +1529,7 @@ def reciprocal_rank_fusion(
 
 <p>An optional rerank pass over the fused top-N can reorder by semantic judgment RRF can't express, using the Anthropic API (<code>claude-sonnet-5</code>) with a JSON-schema-constrained response for a guaranteed-parseable ordering. Frameworks ship equivalent fan-out-and-fuse blocks too: LangChain's <code>EnsembleRetriever</code> combines multiple retrievers with RRF-style fusion, and LlamaIndex's <code>QueryFusionRetriever</code> dispatches across multiple indexes and fuses the results.</p>
 
-<h2>3. Production &amp; Integration</h2>
+<h2>4. Production &amp; Integration</h2>
 
 <p>The most common shape is a single async endpoint fronting an enterprise assistant that searches every internal and third-party system — Slack, Notion, GitHub, Confluence — through one interface, regardless of which tool holds the answer:</p>
 
@@ -1502,7 +1578,7 @@ async def search(q: str = Query(..., min_length=1), top_n: int = 10):
 <p>Permission-aware filtering is the easiest thing to get wrong: caching across users, or querying a source with a privileged service account instead of the requester's own scope, silently turns the federator into a way to leak data a user could never reach directly.</p>
 </div>
 
-<h2>4. Popular Open Source Libraries</h2>
+<h2>5. Popular Open Source Libraries</h2>
 
 <div class="table-wrap">
 <table>
@@ -1523,7 +1599,7 @@ async def search(q: str = Query(..., min_length=1), top_n: int = 10):
 </table>
 </div>
 
-<h2>5. Summary</h2>
+<h2>6. Summary</h2>
 
 <p>Federated retrieval unifies search across systems that stay independent — no migration, no shared index, no single owner of the data — by fanning the query out concurrently, normalizing every source's response into one schema, and fusing per-source rankings with Reciprocal Rank Fusion. The hard parts are production concerns, not the mechanics: permission-aware filtering so results never exceed what a user could see directly in the source, timeouts so one degraded connector doesn't stall every query, and the ongoing cost of maintaining a connector per external system.</p>
 
